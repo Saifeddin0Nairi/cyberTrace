@@ -1,0 +1,3 @@
+{"ts":1778178178.630941,"uids":["CNLlM63RwNBjMtUVnf"],"client_addr":"192.168.56.107","server_addr":"192.168.56.100","mac":"08:00:27:4d:99:78","assigned_addr":"192.168.56.107","lease_time":600.0,"msg_types":["ACK"],"duration":0.0}
+{"ts":1778178478.632889,"uids":["Clrb6N1uZTeSdIV7ia"],"client_addr":"192.168.56.107","server_addr":"192.168.56.100","mac":"08:00:27:4d:99:78","assigned_addr":"192.168.56.107","lease_time":600.0,"msg_types":["ACK"],"duration":0.0}
+{"ts":1778178778.635574,"uids":["CmV43R1YSKn0UVeEul"],"client_addr":"192.168.56.107","server_addr":"192.168.56.100","mac":"08:00:27:4d:99:78","assigned_addr":"192.168.56.107","lease_time":600.0,"msg_types":["ACK"],"duration":0.0}
