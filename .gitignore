@@ -1,0 +1,10 @@
+elasticsearch-9.3.2/
+kibana-9.3.2/
+logstash-9.3.2/
+*.zip
+*.pcap
+zeek_output/
+__pycache__/
+*.pyc
+.venv/
+venv/

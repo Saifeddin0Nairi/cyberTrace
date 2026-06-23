@@ -1,0 +1,181 @@
+{
+  "name": "CyberTrace — Détection & Rapport",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:9200/zeek-ai-anomalies/_search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "{\"size\": 50, \"query\": {\"bool\": {\"must\": [{\"range\": {\"ai_score\": {\"gt\": 0.5}}}, {\"range\": {\"@timestamp\": {\"gte\": \"now-5m\"}}}]}}, \"sort\": [{\"@timestamp\": {\"order\": \"desc\"}}]}",
+        "options": {}
+      },
+      "id": "node-http",
+      "name": "Lire Anomalies ES",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.hits.total.value }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if",
+      "name": "Y a-t-il des anomalies ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "\nconst hits = $input.all()[0].json.hits.hits;\nconst maintenant = new Date().toLocaleString(\"fr-FR\", {\n  timeZone: \"Africa/Tunis\",\n  day: \"2-digit\", month: \"2-digit\", year: \"numeric\",\n  hour: \"2-digit\", minute: \"2-digit\"\n});\n\nlet nb_critical = 0, nb_high = 0, nb_medium = 0, nb_low = 0;\n\nhits.forEach(h => {\n  const score = parseFloat(h._source.ai_score || 0);\n  if (score >= 0.9)       nb_critical++;\n  else if (score >= 0.75) nb_high++;\n  else if (score >= 0.6)  nb_medium++;\n  else                    nb_low++;\n});\n\nconst lignes = hits.map(h => {\n  const s = h._source;\n  const score = parseFloat(s.ai_score || 0);\n  const pct = (score * 100).toFixed(1);\n\n  let severity, color;\n  if (score >= 0.9)       { severity = \"CRITICAL\"; color = \"#dc2626\"; }\n  else if (score >= 0.75) { severity = \"HIGH\";     color = \"#ea580c\"; }\n  else if (score >= 0.6)  { severity = \"MEDIUM\";   color = \"#d97706\"; }\n  else                    { severity = \"LOW\";       color = \"#65a30d\"; }\n\n  const src_ip  = s[\"id.orig_h\"] || s.src || \"N/A\";\n  const dst_ip  = s[\"id.resp_h\"] || s.dst || \"N/A\";\n  const port    = s[\"id.resp_p\"] || \"N/A\";\n  const proto   = s.proto        || \"N/A\";\n  const state   = s.conn_state   || \"N/A\";\n  const o_bytes = s.orig_bytes   || 0;\n  const r_bytes = s.resp_bytes   || 0;\n  const ts      = s[\"@timestamp\"] ? new Date(s[\"@timestamp\"]).toLocaleString(\"fr-FR\") : \"N/A\";\n\n  return `\n  <tr style=\"border-bottom:1px solid #1e3a5f\">\n    <td style=\"padding:10px;color:#94a3b8;font-size:12px\">${ts}</td>\n    <td style=\"padding:10px;font-weight:600;color:#60a5fa\">${src_ip}</td>\n    <td style=\"padding:10px;color:#e2e8f0\">${dst_ip}</td>\n    <td style=\"padding:10px;color:#e2e8f0\">${port}</td>\n    <td style=\"padding:10px;color:#e2e8f0\">${proto}</td>\n    <td style=\"padding:10px;color:#e2e8f0\">${state}</td>\n    <td style=\"padding:10px\">\n      <span style=\"background:${color};color:white;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700\">${severity}</span>\n    </td>\n    <td style=\"padding:10px;font-weight:700;color:${color}\">${pct}%</td>\n    <td style=\"padding:10px;color:#94a3b8;font-size:11px\">${o_bytes} / ${r_bytes} B</td>\n  </tr>`;\n}).join(\"\");\n\nconst rapport = `<!DOCTYPE html>\n<html lang=\"fr\">\n<head><meta charset=\"UTF-8\"><title>CyberTrace Rapport</title></head>\n<body style=\"margin:0;padding:0;background:#0a0f1e;font-family:'Segoe UI',Arial,sans-serif;color:#e2e8f0\">\n<div style=\"max-width:950px;margin:0 auto;padding:30px\">\n\n  <div style=\"background:linear-gradient(135deg,#0f2544,#1a3a6e);border-radius:12px;padding:30px;margin-bottom:24px;border-left:5px solid #ef4444\">\n    <div style=\"display:flex;align-items:center;gap:15px\">\n      <div style=\"font-size:48px\">🛡️</div>\n      <div>\n        <h1 style=\"margin:0;font-size:26px;color:#f8fafc\">CyberTrace — Rapport d'Incidents</h1>\n        <p style=\"margin:6px 0 0;color:#94a3b8;font-size:14px\">Généré le ${maintenant} | Détection IA automatique</p>\n      </div>\n    </div>\n  </div>\n\n  <div style=\"display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px\">\n    <div style=\"background:#1e0a0a;border:1px solid #dc2626;border-radius:10px;padding:20px;text-align:center\">\n      <div style=\"font-size:36px;font-weight:800;color:#ef4444\">${nb_critical}</div>\n      <div style=\"color:#94a3b8;font-size:13px;margin-top:4px\">🔴 CRITICAL</div>\n    </div>\n    <div style=\"background:#1a0f06;border:1px solid #ea580c;border-radius:10px;padding:20px;text-align:center\">\n      <div style=\"font-size:36px;font-weight:800;color:#f97316\">${nb_high}</div>\n      <div style=\"color:#94a3b8;font-size:13px;margin-top:4px\">🟠 HIGH</div>\n    </div>\n    <div style=\"background:#1a1506;border:1px solid #d97706;border-radius:10px;padding:20px;text-align:center\">\n      <div style=\"font-size:36px;font-weight:800;color:#fbbf24\">${nb_medium}</div>\n      <div style=\"color:#94a3b8;font-size:13px;margin-top:4px\">🟡 MEDIUM</div>\n    </div>\n    <div style=\"background:#0a1a0a;border:1px solid #16a34a;border-radius:10px;padding:20px;text-align:center\">\n      <div style=\"font-size:36px;font-weight:800;color:#4ade80\">${hits.length}</div>\n      <div style=\"color:#94a3b8;font-size:13px;margin-top:4px\">📊 TOTAL</div>\n    </div>\n  </div>\n\n  <div style=\"background:#1e0a0a;border:1px solid #ef4444;border-radius:10px;padding:20px;margin-bottom:24px\">\n    <h2 style=\"margin:0 0 8px;color:#ef4444;font-size:16px\">⚠️ ALERTE SÉCURITÉ — Action requise</h2>\n    <p style=\"margin:0;color:#cbd5e1;font-size:14px\">\n      CyberTrace a détecté <strong style=\"color:#ef4444\">${hits.length} anomalies</strong>\n      dont <strong style=\"color:#ef4444\">${nb_critical} critiques</strong> et\n      <strong style=\"color:#f97316\">${nb_high} élevées</strong> dans les 5 dernières minutes.\n    </p>\n  </div>\n\n  <div style=\"background:#0d1829;border:1px solid #1e3a5f;border-radius:10px;padding:24px;margin-bottom:24px\">\n    <h2 style=\"margin:0 0 16px;color:#60a5fa;font-size:18px\">📋 Détails des incidents</h2>\n    <div style=\"overflow-x:auto\">\n      <table style=\"width:100%;border-collapse:collapse;font-size:13px\">\n        <thead>\n          <tr style=\"background:#0f2544\">\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">Horodatage</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">IP Source</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">IP Dest</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">Port</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">Proto</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">État</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">Sévérité</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">Score IA</th>\n            <th style=\"padding:12px 10px;text-align:left;color:#94a3b8;border-bottom:2px solid #1e3a5f\">Octets S/R</th>\n          </tr>\n        </thead>\n        <tbody>${lignes}</tbody>\n      </table>\n    </div>\n  </div>\n\n  <div style=\"background:#0d1829;border:1px solid #1e3a5f;border-radius:10px;padding:20px;text-align:center\">\n    <p style=\"margin:0;color:#475569;font-size:12px\">\n      🔒 <strong style=\"color:#60a5fa\">CyberTrace IA</strong> —\n      Pipeline : PCAP → Zeek → Logstash → Elasticsearch → IA → N8N<br>\n      Rapport confidentiel. Toute anomalie CRITICAL nécessite une vérification immédiate.\n    </p>\n  </div>\n\n</div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    rapport_html: rapport,\n    sujet: `🚨 CyberTrace — ${hits.length} anomalies (${nb_critical} CRITICAL, ${nb_high} HIGH) — ${maintenant}`,\n    nb_total: hits.length,\n    nb_critical,\n    nb_high\n  }\n}];\n"
+      },
+      "id": "node-code",
+      "name": "Générer Rapport HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "nouisseroumaissa@gmail.com",
+        "toEmail": "nouisseroumaissa@gmail.com",
+        "subject": "={{ $json.sujet }}",
+        "emailType": "html",
+        "html": "={{ $json.rapport_html }}",
+        "options": {}
+      },
+      "id": "node-email",
+      "name": "Envoyer Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-cybertrace",
+          "name": "Gmail CyberTrace SMTP"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Lire Anomalies ES",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire Anomalies ES": {
+      "main": [
+        [
+          {
+            "node": "Y a-t-il des anomalies ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Y a-t-il des anomalies ?": {
+      "main": [
+        [
+          {
+            "node": "Générer Rapport HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Générer Rapport HTML": {
+      "main": [
+        [
+          {
+            "node": "Envoyer Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cybertrace-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
